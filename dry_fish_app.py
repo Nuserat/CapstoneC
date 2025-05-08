@@ -1,5 +1,6 @@
 import streamlit as st
 import torch
+torch.classes.__path__ = []
 import torch.nn as nn
 import numpy as np
 import cv2
