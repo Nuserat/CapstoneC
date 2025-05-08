@@ -1,149 +1,164 @@
 import streamlit as st
 import torch
-torch.classes.__path__ = []
-import torch.nn as nn
 import numpy as np
 import cv2
+from PIL import Image
 from torchvision import models, transforms
 from pytorch_grad_cam import GradCAM, GradCAMPlusPlus, EigenCAM
 from pytorch_grad_cam.utils.image import show_cam_on_image
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
-from PIL import Image
+from ultralytics import YOLO
+import os
 
-# Ensure set_page_config is the first Streamlit command
-st.set_page_config(page_title="Dry Fish Classification and XAI", layout="wide")
+st.set_page_config(page_title="Dry Fish Classification & Detection", layout="wide")
 
-# Set background color for right side to light gray and text color to black
-st.markdown(
-    """
-    <style>
-    body {
-        background-color: black;
-        color: white;
+# Styling
+st.markdown("""
+<style>
+body {background-color: black; color: white;}
+.stApp {background-color: lightcyan; color: black;}
+</style>
+""", unsafe_allow_html=True)
+
+# ----- Tabs -----
+tab1, tab2 = st.tabs(["📌 Classification", "📍 Detection"])
+
+# ======== Classification Tab ========
+with tab1:
+    st.markdown("<h2 style='text-align: center;'>Dry Fish Classification with XAI</h2>", unsafe_allow_html=True)
+
+    @st.cache_resource
+    def load_classification_model():
+        model = models.mobilenet_v2(weights=models.MobileNet_V2_Weights.IMAGENET1K_V1)
+        model.classifier[1] = torch.nn.Linear(model.last_channel, 11)
+        model.load_state_dict(torch.load("mobilenet_v2.pth", map_location=torch.device("cuda" if torch.cuda.is_available() else "cpu")))
+        model.eval()
+        return model.to("cuda" if torch.cuda.is_available() else "cpu")
+
+    transform = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+    ])
+
+    class_names = [
+        "Corica soborna(কাচকি মাছ)", "Jamuna ailia(কাজরী মাছ)", "Clupeidae(চাপিলা মাছ)", "Shrimp(চিংড়ি মাছ)",
+        "Chepa(চ্যাপা মাছ)", "Chela(চ্যালা মাছ)", "Swamp barb(পুঁটি মাছ)", "Silond catfish(ফ্যাসা মাছ)",
+        "Pale Carplet(মলা মাছ)", "Bombay Duck(লইট্যা মাছ)", "Four-finger threadfin(লাইক্ষা মাছ)"
+    ]
+
+    uploaded_file = st.sidebar.file_uploader("Upload an image for classification", type=["jpg", "jpeg", "png"], key="clf")
+
+    if uploaded_file:
+        image = Image.open(uploaded_file).convert("RGB")
+        original_image_np = np.array(image).astype(np.float32) / 255.0
+        transformed_image = transform(image).unsqueeze(0).to("cuda" if torch.cuda.is_available() else "cpu")
+        model = load_classification_model()
+
+        with torch.no_grad():
+            outputs = model(transformed_image)
+            predicted_class = outputs.argmax().item()
+
+        st.sidebar.success(f"Predicted: {class_names[predicted_class]} (ID: {predicted_class})")
+
+        target_layers = [model.features[-1]]
+        target = [ClassifierOutputTarget(predicted_class)]
+
+        gradcam = GradCAM(model, target_layers)
+        gradcam_result = show_cam_on_image(original_image_np,
+                                           cv2.resize(gradcam(transformed_image, target)[0],
+                                                      (original_image_np.shape[1], original_image_np.shape[0])),
+                                           use_rgb=True)
+
+        gradcam_pp = GradCAMPlusPlus(model, target_layers)
+        gradcam_pp_result = show_cam_on_image(original_image_np,
+                                              cv2.resize(gradcam_pp(transformed_image, target)[0],
+                                                         (original_image_np.shape[1], original_image_np.shape[0])),
+                                              use_rgb=True)
+
+        eigen_cam = EigenCAM(model, target_layers)
+        eigen_result = show_cam_on_image(original_image_np,
+                                         cv2.resize(eigen_cam(transformed_image, target)[0],
+                                                    (original_image_np.shape[1], original_image_np.shape[0])),
+                                         use_rgb=True)
+
+        cols = st.columns(4)
+        imgs = [np.array(image), gradcam_result, gradcam_pp_result, eigen_result]
+        captions = [
+            "**Original Image**",
+            "**Grad-CAM**",
+            "**Grad-CAM++**",
+            "**Eigen-CAM**"
+        ]
+        for i, col in enumerate(cols):
+            with col:
+                st.image(cv2.resize(imgs[i], (400, 400)))
+                st.markdown(f"<div style='text-align:center'>{captions[i]}</div>", unsafe_allow_html=True)
+    else:
+        st.info("Upload an image to classify dry fish.")
+
+# ======== Detection Tab ========
+with tab2:
+    st.markdown("<h2 style='text-align: center;'>YOLO-based Dry Fish Detection with EigenCAM</h2>", unsafe_allow_html=True)
+
+    model_options = {
+        "YOLOv9": "yolov9.pt",
+        "YOLOv10": "yolov10.pt",
+        "YOLOv11": "yolov11.pt",
+        "YOLOv12": "yolov12.pt"
     }
-    .stApp {
-        background-color: lightcyan;
-        color: black;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+    selected_model = st.sidebar.selectbox("Choose YOLO model", list(model_options.keys()), key="det")
+    model_path = model_options[selected_model]
 
-# Load the pretrained MobileNetV2 model
-@st.cache_resource
-def load_model():
-    num_classes = 11  # Updated with the number of dry fish classes
-    model = models.mobilenet_v2(weights=models.MobileNet_V2_Weights.IMAGENET1K_V1)
-    model.classifier[1] = nn.Linear(model.last_channel, num_classes)  # Modify the classifier
-    model.load_state_dict(torch.load("mobilenet_v2.pth", map_location=torch.device("cuda" if torch.cuda.is_available() else "cpu")))
-    model.eval()
-    model = model.to("cuda" if torch.cuda.is_available() else "cpu")
-    return model
+    @st.cache_resource
+    def load_yolo(path):
+        return YOLO(path)
 
-# Define the image transformation pipeline
-transform = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-])
+    model = load_yolo(model_path)
+    st.success(f"YOLO model {model_path} loaded.")
 
-# Class labels
-class_names = [
-    "Corica soborna(কাচকি মাছ)", "Jamuna ailia(কাজরী মাছ)", "Clupeidae(চাপিলা মাছ)", "Shrimp(চিংড়ি মাছ)", "Chepa(চ্যাপা মাছ)",
-    "Chela(চ্যালা মাছ)", "Swamp barb(পুঁটি মাছ)", "Silond catfish(ফ্যাসা মাছ)", "Pale Carplet(মলা মাছ)", "Bombay Duck(লইট্যা মাছ)", "Four-finger threadfin(লাইক্ষা মাছ)"
-]
+    uploaded_det_file = st.file_uploader("Upload an image for detection", type=["jpg", "jpeg", "png"], key="det2")
 
-# Header Section
-st.markdown(
-    """
-    <div style='text-align: center; font-size: 36px; font-weight: bold;'>Dry Fish Classification and Explainable AI</div>
-    <hr style='border: 1px solid black;'>
-    """,
-    unsafe_allow_html=True,
-)
+    if uploaded_det_file:
+        image = Image.open(uploaded_det_file).convert("RGB")
+        image_np = np.array(image)
 
-st.markdown(
-    """
-    <div style='text-align: center; font-size: 32px; font-weight: bold;'>Explainable AI for Dry Fish Classification</div>
-    <div style='text-align: center; font-size: 20px; font-weight: normal; margin-top: -10px;'>Using Grad-CAM, Grad-CAM++, and Eigen-CAM</div>
-    """,
-    unsafe_allow_html=True,
-)
+        if st.button("🔍 Run Detection"):
+            with st.spinner("Detecting..."):
+                results = model(image_np)
+                det_img = image_np.copy()
 
-st.sidebar.header("Upload Your Image")
-uploaded_file = st.sidebar.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
+                if results and len(results[0].boxes) > 0:
+                    for box in results[0].boxes:
+                        x1, y1, x2, y2 = map(int, box.xyxy[0])
+                        conf = float(box.conf[0])
+                        label = f"Dry Fish: {conf:.2f}"
+                        cv2.rectangle(det_img, (x1, y1), (x2, y2), (255, 0, 0), 2)
+                        cv2.putText(det_img, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
 
-if uploaded_file:
-    image = Image.open(uploaded_file).convert("RGB")
-    original_image_np = np.array(image).astype(np.float32) / 255.0
-    transformed_image = transform(image).unsqueeze(0).to("cuda" if torch.cuda.is_available() else "cpu")
+                    st.success(f"{len(results[0].boxes)} dry fish detected.")
+                else:
+                    st.warning("No dry fish detected.")
 
-    model = load_model()
-    
-    with torch.no_grad():
-        outputs = model(transformed_image)
-        predicted_class = outputs.argmax().item()
-    
-    st.sidebar.markdown(
-        f"""
-        <div style='border: 2px solid #4CAF50; border-radius: 10px; padding: 15px; text-align: center; background-color: lightgray; color: black;'>
-            <h3 style='color: black;'>Prediction</h3>
-            <p style='font-size: 18px; font-weight: bold; color: #4CAF50;'>{class_names[predicted_class]}</p>
-            <p style='font-size: 14px; color: black;'>(Class ID: {predicted_class})</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+                st.image(det_img, caption="Detection Result", use_column_width=True)
 
-    target_layers = [model.features[-1]]
-    target = [ClassifierOutputTarget(predicted_class)]
+                st.subheader("📊 EigenCAM on YOLO")
+                img_resized = cv2.resize(image_np, (640, 640))
+                img_tensor = torch.from_numpy(img_resized).permute(2, 0, 1).unsqueeze(0).float() / 255.0
+                norm_img = np.float32(img_resized) / 255.0
 
-    gradcam = GradCAM(model=model, target_layers=target_layers)
-    gradcam_heatmap = gradcam(input_tensor=transformed_image, targets=target)[0]
-    gradcam_result = show_cam_on_image(original_image_np, cv2.resize(gradcam_heatmap, (original_image_np.shape[1], original_image_np.shape[0])), use_rgb=True)
+                cam = EigenCAM(model.model, [model.model.model[-2]])
+                grayscale_cam = cam(input_tensor=img_tensor, eigen_smooth=True)[0]
+                cam_img = show_cam_on_image(norm_img, grayscale_cam, use_rgb=True)
 
-    gradcam_plus_plus = GradCAMPlusPlus(model=model, target_layers=target_layers)
-    gradcam_plus_plus_heatmap = gradcam_plus_plus(input_tensor=transformed_image, targets=target)[0]
-    gradcam_plus_plus_result = show_cam_on_image(original_image_np, cv2.resize(gradcam_plus_plus_heatmap, (original_image_np.shape[1], original_image_np.shape[0])), use_rgb=True)
+                st.image(cam_img, caption="EigenCAM Visualization", use_column_width=True)
+    else:
+        st.info("Upload an image to detect dry fish.")
 
-    eigen_cam = EigenCAM(model=model, target_layers=target_layers)
-    eigen_cam_heatmap = eigen_cam(input_tensor=transformed_image, targets=target)[0]
-    eigen_cam_result = show_cam_on_image(original_image_np, cv2.resize(eigen_cam_heatmap, (original_image_np.shape[1], original_image_np.shape[0])), use_rgb=True)
-
-    st.markdown(
-        """
-        <div style='text-align: center; font-size: 20px; font-weight: bold; margin-top: 30px;'>
-            Visualization Results
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    cols = st.columns(4, gap="medium")
-    grid_images = [np.array(image), gradcam_result, gradcam_plus_plus_result, eigen_cam_result]
-    #captions = ["**Original Image**", "**Grad-CAM**", "**Grad-CAM++**", "**Eigen-CAM**"]
-    captions = [
-    "**Original Image**",
-    "**Grad-CAM**: Highlights important regions by computing the gradient of the class score with respect to the feature maps.",
-    "**Grad-CAM++**: An improved version of Grad-CAM that provides better localization by weighting the gradients differently.",
-    "**Eigen-CAM**: Utilizes principal component analysis on the feature maps to identify significant regions without relying on gradients."
-]   
-    
-    for i, col in enumerate(cols):
-        with col:
-            st.image(cv2.resize(grid_images[i], (400, 400)), use_container_width=False)
-            st.markdown(f"<div style='text-align: center; font-size: 18px; font-weight: bold; color: black;'>{captions[i]}</div>", unsafe_allow_html=True)
-else:
-    st.info("Please upload an image to proceed.")
-
-# Footer Section
-st.markdown(
-    """
-    <hr style='border: 1px solid black;'>
-    <div style='text-align: center; font-size: 16px; color: black;'>
-        © 2025 Dry Fish Classification System | Developed by Md Rifat Ahmmad Rashid, Associate Professor, EWU Bangladesh
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+# Footer
+st.markdown("""
+<hr>
+<div style='text-align: center; font-size: 14px;'>
+© 2025 Dry Fish AI | Developed by Md Rifat Ahmmad Rashid, Associate Professor, EWU Bangladesh
+</div>
+""", unsafe_allow_html=True)
