@@ -59,12 +59,3 @@ streamlit run app.py
 │── 📂 README.md  # Project documentation
 ```
 
-## Contributing
-Contributions are welcome! Feel free to submit issues and pull requests to improve the project.
-
-## License
-This project is licensed under the MIT License.
-
-## Contact
-For inquiries, please reach out via [rifat.rashid@ewubd.edu](mailto:rifat.rashid@ewubd.edu) or open an issue on GitHub.
-
