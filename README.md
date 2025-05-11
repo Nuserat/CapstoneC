@@ -37,7 +37,7 @@ streamlit run app.py
 ```
 
 ## Model
-- **Architecture**: MobileNetV2
+- **Architecture**: MobileNetV2, YOLOV9, YOLOV10, YOLOV11, YOLOV12
 - **Dataset**: 11 categories of dry fish images
 - **Explainability**: Uses Grad-CAM techniques to highlight important regions for classification
 
