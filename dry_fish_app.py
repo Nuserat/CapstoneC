@@ -11,6 +11,8 @@ from pytorch_grad_cam.utils.image import show_cam_on_image
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 from ultralytics import YOLO
 import matplotlib.pyplot as plt
+import sys
+sys.path.append("./YOLO-V8-CAM")  
 
 # ----------------------------- CONFIG -----------------------------
 st.set_page_config(page_title="Dry Fish Classify & Detect", layout="wide")
@@ -46,7 +48,6 @@ if mode == "Classification":
 )
 
     @st.cache_resource
-    # Load the pretrained MobileNetV2 model
     def load_model():
         num_classes = 11  # Updated with the number of dry fish classes
         model = models.mobilenet_v2(weights=models.MobileNet_V2_Weights.IMAGENET1K_V1)
@@ -224,26 +225,47 @@ elif mode == "Detection":
                         st.success(f"Detected {count} Dry Fish instance(s).")
                     else:
                         st.info("No Dry Fish detected.")
-
-                # ============ 🔍 EigenCAM XAI Visualization ============
-                    st.subheader("📊 EigenCAM Visualization")
-                    cam_input = model.transforms(image)[0].unsqueeze(0)
-                    raw_model = model.model
-                    target_layers = [raw_model.model[-2]]  # Last conv layer
-
-                    with EigenCAM(model=raw_model, target_layers=target_layers, use_cuda=torch.cuda.is_available()) as cam:
-                        grayscale_cam = cam(input_tensor=cam_input)[0]
-
-                    rgb_img = np.float32(image_np) / 255
-                    cam_image = show_cam_on_image(rgb_img, grayscale_cam, use_rgb=True)
-
-                    st.image(cam_image, caption="EigenCAM Attention Map", use_column_width=True)
-                    combined = np.hstack((image_np, cam_image))
-                    st.image(combined, caption="Original + CAM", use_column_width=True)
-                # ========================================================
-
                 except Exception as e:
                     st.error(f"Error during detection: {e}")
+
+
+                # ============ 🔍 EigenCAM XAI Visualization ============
+
+    @st.cache_resource
+    def load_raw_yolo_model():
+        model = YOLO("yolo10n.pt")  # Adjust path if needed
+        model.cpu()
+        return model
+
+    raw_model = load_raw_yolo_model()
+
+    if uploaded_file is not None:
+        # Read image
+        file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
+        image = cv2.imdecode(file_bytes, 1)
+        image = cv2.resize(image, (640, 640))
+        rgb_img = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        img_input = np.float32(rgb_img) / 255.0
+
+        # Select target layer
+        target_layers = [raw_model.model.model[-2]]  # Last conv layer
+
+        # Run EigenCAM
+        with st.spinner("Generating EigenCAM..."):
+            cam = EigenCAM(raw_model, target_layers, task='od')
+            grayscale_cam = cam(rgb_img)[0, :, :]
+            cam_image = show_cam_on_image(img_input, grayscale_cam, use_rgb=True)
+
+        # Show outputs
+        st.subheader("Original Image")
+        st.image(rgb_img, channels="RGB")
+
+        st.subheader("EigenCAM Overlay")
+        st.image(cam_image, channels="RGB")
+
+        st.subheader("Side-by-Side View")
+        combined = np.hstack((rgb_img, cam_image))
+        st.image(combined, channels="RGB")
 
 # About section
     with st.expander("About this App"):
