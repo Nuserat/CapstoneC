@@ -11,6 +11,8 @@ from pytorch_grad_cam.utils.image import show_cam_on_image
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 from ultralytics import YOLO
 import matplotlib.pyplot as plt
+ 
+
 
 # ----------------------------- CONFIG -----------------------------
 st.set_page_config(page_title="Dry Fish Classify & Detect", layout="wide")
@@ -46,7 +48,6 @@ if mode == "Classification":
 )
 
     @st.cache_resource
-    # Load the pretrained MobileNetV2 model
     def load_model():
         num_classes = 11  # Updated with the number of dry fish classes
         model = models.mobilenet_v2(weights=models.MobileNet_V2_Weights.IMAGENET1K_V1)
@@ -221,12 +222,14 @@ elif mode == "Detection":
 
                     count = len(results[0].boxes)
                     if count > 0:
-                        st.success(f"Detected {count} Dry Fish instance(s).")
+                        st.markdown(f"<p style='color:black;'>Detected {count} Dry Fish instance(s).</p>", unsafe_allow_html=True)
                     else:
-                        st.info("No Dry Fish detected.")
+                        st.markdown("<p style='color:black;'>No Dry Fish detected.</p>", unsafe_allow_html=True)
 
                 except Exception as e:
                     st.error(f"Error during detection: {e}")
+
+               
 
 # About section
     with st.expander("About this App"):
