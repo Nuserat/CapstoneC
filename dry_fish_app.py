@@ -27,24 +27,23 @@ class_names = [
 
 # ----------------------------- CLASSIFICATION -----------------------------
 if mode == "Classification":
-    st.header("📊 Dry Fish Classification with Grad-CAM Variants")
 
     # Set background color for right side to light gray and text color to black
     st.markdown(
-        """
-        <style>
-        body {
-            background-color: black;
-            color: white;
-        }
-        .stApp {
-            background-color: lightcyan;
-            color: black;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+    """
+    <style>
+    body {
+        background-color: black;
+        color: white;
+    }
+    .stApp {
+        background-color: lightcyan;
+        color: black;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
     @st.cache_resource
     # Load the pretrained MobileNetV2 model
@@ -70,21 +69,12 @@ if mode == "Classification":
         "Chela(চ্যালা মাছ)", "Swamp barb(পুঁটি মাছ)", "Silond catfish(ফ্যাসা মাছ)", "Pale Carplet(মলা মাছ)", "Bombay Duck(লইট্যা মাছ)", "Four-finger threadfin(লাইক্ষা মাছ)"
     ]
 
-    # Header Section
     st.markdown(
-        """
-        <div style='text-align: center; font-size: 36px; font-weight: bold;'>Dry Fish Classification and Explainable AI</div>
-        <hr style='border: 1px solid black;'>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(
-        """
-        <div style='text-align: center; font-size: 32px; font-weight: bold;'>Explainable AI for Dry Fish Classification</div>
-        <div style='text-align: center; font-size: 20px; font-weight: normal; margin-top: -10px;'>Using Grad-CAM, Grad-CAM++, and Eigen-CAM</div>
-        """,
-        unsafe_allow_html=True,
+    """
+    <div style='text-align: center; font-size: 32px; font-weight: bold;'>📊 Explainable AI for Dry Fish Classification</div>
+    <div style='text-align: center; font-size: 20px; font-weight: normal; margin-top: -10px;'>Using Grad-CAM, Grad-CAM++, and Eigen-CAM</div>
+    """,
+    unsafe_allow_html=True,
     )
 
     st.sidebar.header("Upload Your Image")
@@ -154,29 +144,42 @@ if mode == "Classification":
 
 # ----------------------------- DETECTION -----------------------------
 elif mode == "Detection":
-    st.header("📦 Dry Fish Detection using YOLOv Models + EigenCAM")
-    model_options = {
-        "YOLOv9": "yolov9.pt",
-        "YOLOv10": "yolov10.pt",
-        "YOLOv11": "yolov11.pt",
-        "YOLOv12": "yolov12.pt"
+    st.markdown(
+    """
+    <style>
+    body {
+        background-color: black;
+        color: white;
     }
-
-    selected_model_name = st.sidebar.selectbox("Select Model", list(model_options.keys()))
-    model_path = model_options[selected_model_name]
+    .stApp {
+        background-color: lightcyan;
+        color: black;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+    )
+    st.header("📦 Dry Fish Detection using YOLOv Models + EigenCAM")
 
     @st.cache_resource
-    def load_model(path):
-        return YOLO(path)
+    def load_model():
+        try:
+            from ultralytics import YOLO
+            model = YOLO("yolov10.pt")
+            st.success("✅ Model `yolov10.pt` loaded successfully.")
+            return model
+        except Exception as e:
+            st.error(f"❌ Failed to load model: {e}")
+            return None
 
-    model = load_model(model_path)
-    st.success(f"✅ Model `{model_path}` loaded successfully.")
+    model = load_model()
+    if model is None:
+        st.stop()
 
     class_names = [
-        "Corica soborna", "Jamuna ailia", "Clupeidae", "Shrimp", "Chepa","Chela", "Swamp barb", "Silond catfish", "Pale Carplet", "Bombay Duck", "Four-finger threadfi"
+        "Corica soborna", "Jamuna ailia", "Clupeidae", "Shrimp", "Chepa",
+        "Chela", "Swamp barb", "Silond catfish", "Pale Carplet", "Bombay Duck", "Four-finger threadfi"
     ]
-    
-    # Draw bounding boxes around detections
     def draw_boxes(image, results):
         annotated_img = image.copy()
         class_names = model.names  # ✅ Pull correct labels from model
@@ -190,60 +193,61 @@ elif mode == "Detection":
 
                 cv2.rectangle(annotated_img, (x1, y1), (x2, y2), (0, 0, 255), 2)
                 cv2.putText(annotated_img, label, (x1, y1 - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
         return annotated_img
 
-    # Image upload section
+
+# Image upload section
     st.subheader("📷 Upload an Image to Detect Dry Fish")
     uploaded_file = st.file_uploader("Choose an image", type=["jpg", "jpeg", "png"])
+
     if uploaded_file is not None:
         image = Image.open(uploaded_file).convert("RGB")  # PIL image
         image_np = np.array(image).astype(np.uint8)  # Ensure correct format
 
+        if st.button("🔍 Detect Dry Fish"):
+            with st.spinner("Processing..."):
+                try:
+                    results = model(image, imgsz=(600, 800), conf=0.5)
+                    result_image = draw_boxes(image_np, results[0])
 
-    if st.button("🔍 Detect Dry Fish"):
-        with st.spinner("Processing..."):
-            try:
-                results = model(image_np, conf=0.1)  # LOWER CONFIDENCE for better detection
-                result_image = draw_boxes(image_np, results[0])
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.subheader("Original Image")
+                        st.image(image, use_column_width=True)
+                    with col2:
+                        st.subheader("Detection Result")
+                        st.image(result_image, use_column_width=True)
 
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.subheader("Original Image")
-                    st.image(image, use_column_width=True)
-                with col2:
-                    st.subheader("Detection Result")
-                    st.image(result_image, use_column_width=True)
-
-                count = len(results[0].boxes)
-                if count > 0:
-                    st.success(f"Detected {count} Dry Fish instance(s).")
-                else:
-                    st.info("No Dry Fish detected.")
+                    count = len(results[0].boxes)
+                    if count > 0:
+                        st.success(f"Detected {count} Dry Fish instance(s).")
+                    else:
+                        st.info("No Dry Fish detected.")
 
                 # ============ 🔍 EigenCAM XAI Visualization ============
-                st.subheader("📊 EigenCAM Visualization")
-                cam_input = model.transforms(image)[0].unsqueeze(0)
-                raw_model = model.model
-                target_layers = [raw_model.model[-2]]  # Last conv layer
+                    st.subheader("📊 EigenCAM Visualization")
+                    cam_input = model.transforms(image)[0].unsqueeze(0)
+                    raw_model = model.model
+                    target_layers = [raw_model.model[-2]]  # Last conv layer
 
-                with EigenCAM(model=raw_model, target_layers=target_layers, use_cuda=torch.cuda.is_available()) as cam:
-                    grayscale_cam = cam(input_tensor=cam_input)[0]
+                    with EigenCAM(model=raw_model, target_layers=target_layers, use_cuda=torch.cuda.is_available()) as cam:
+                        grayscale_cam = cam(input_tensor=cam_input)[0]
 
-                rgb_img = np.float32(image_np) / 255
-                cam_image = show_cam_on_image(rgb_img, grayscale_cam, use_rgb=True)
+                    rgb_img = np.float32(image_np) / 255
+                    cam_image = show_cam_on_image(rgb_img, grayscale_cam, use_rgb=True)
 
-                st.image(cam_image, caption="EigenCAM Attention Map", use_column_width=True)
-                combined = np.hstack((image_np, cam_image))
-                st.image(combined, caption="Original + CAM", use_column_width=True)
+                    st.image(cam_image, caption="EigenCAM Attention Map", use_column_width=True)
+                    combined = np.hstack((image_np, cam_image))
+                    st.image(combined, caption="Original + CAM", use_column_width=True)
                 # ========================================================
 
-            except Exception as e:
-                st.error(f"Error during detection: {e}")
+                except Exception as e:
+                    st.error(f"Error during detection: {e}")
 
 # About section
-with st.expander("About this App"):
-    st.write("""
+    with st.expander("About this App"):
+        st.write("""
     ### Dry Fish Detection App (Image Upload + XAI)
     This app uses YOLOv Models trained for detecting dry fish from images.
 
