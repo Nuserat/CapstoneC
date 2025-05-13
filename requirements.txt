@@ -4,6 +4,7 @@ pillow
 numpy
 opencv-python-headless
 git+https://github.com/jacobgil/pytorch-grad-cam.git
+git+https://github.com/rigvedrs/YOLO-V8-CAM.git
 pytorch-grad-cam>=1.4.0
 streamlit
 ultralytics
